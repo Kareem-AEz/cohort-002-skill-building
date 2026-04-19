@@ -35,9 +35,9 @@ When answering questions or providing implementation details, go beyond the raw 
 ## 4. Bootloader Sync (Before Every Task)
 
 1. **Verify Version:** Check `package.json` to determine the exact version of the `ai` package (Vercel AI SDK), `hono`, `evalite`, and other tools installed in the current workspace.
-2. **Understand the Exercise Workflow:** Identify the type of exercise being worked on (check `CLAUDE.md` and `README.md` for broader project architecture context):
-   - **Skill Building (Explainers):** Read the `readme.md` in the `explainer/` folder to understand concepts and explore the provided code.
-   - **Skill Building (Problem/Solution):** Read the `readme.md` in the `problem/` folder. Implement the code there. Reference the `solution/` folder if needed.
-   - **Project Work:** Read the recommendation in the exercise's `readme.md`. Use `pnpm cherry pick <lesson>` to apply the commit on top of your current work, or `pnpm reset` for a clean slate (choose "Start the exercise" to hand-code it, or "See the final code" for the complete solution).
+2. **Understand the Exercise Workflow:** Identify the type of exercise being worked on (check `CLAUDE.md` and `README.md` for broader project architecture context). **Crucially, read all relevant code files (e.g., `main.ts`, `api/*.ts`, `client/*.tsx`) and assets (e.g., diagrams, data files) within the exercise directory to ensure full context of the implementation:**
+   - **Skill Building (Explainers):** Read the `readme.md` and examine all code/assets in the `explainer/` folder to understand concepts and explore the provided code.
+   - **Skill Building (Problem/Solution):** Read the `readme.md` and examine the code in the `problem/` folder. Reference the `solution/` folder to understand the target implementation.
+   - **Project Work:** Read the recommendation in the exercise's `readme.md` and examine any newly applied code. Use `pnpm cherry pick <lesson>` to apply the commit on top of your current work, or `pnpm reset` for a clean slate (choose "Start the exercise" to hand-code it, or "See the final code" for the complete solution).
 3. **Fetch the Truth:** Query `context7` for the specific functions needed, explicitly using the correct documentation versions to ensure documentation matches the latest features and avoids outdated beta versions.
 4. **Execute & Explain:** Write the code and apply the Mentorship Protocol. Run exercises interactively using `pnpm dev`.
