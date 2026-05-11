@@ -1,10 +1,12 @@
+@agents.md
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-AI SDK v5 crash course repository - educational material for learning AI app development with TypeScript. Contains exercises on retrieval techniques (BM25, embeddings, rank fusion, query rewriting, reranking) with problem/solution/explainer structure.
+AI SDK v6 crash course repository - educational material for learning AI app development with TypeScript. Contains exercises on retrieval techniques (BM25, embeddings, rank fusion, query rewriting, reranking) with problem/solution/explainer structure.
 
 ## Development Commands
 

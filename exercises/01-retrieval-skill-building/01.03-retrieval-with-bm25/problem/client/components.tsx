@@ -1,6 +1,6 @@
-import type { UIMessage } from 'ai';
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { MyUIMessage } from '../api/chat.ts';
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
@@ -34,7 +34,7 @@ export const Message = ({
   parts,
 }: {
   role: string;
-  parts: UIMessage['parts'];
+  parts: MyUIMessage['parts'];
 }) => {
   const isUser = role === 'user';
 
@@ -57,10 +57,171 @@ export const Message = ({
                 </div>
               );
             }
+
+            if (part.type === 'data-emails')
+              return <EmailSources emails={part.data} />;
+
+            if (part.type === 'data-keywords')
+              return <KeywordsBadge keywords={part.data} />;
             return '';
           })}
         </div>
       </div>
+    </div>
+  );
+};
+
+export const KeywordsBadge = ({
+  keywords,
+}: {
+  keywords: string[];
+}) => {
+  if (!keywords.length) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap py-2">
+      <span className="text-xs text-muted-foreground font-medium shrink-0">
+        Searching for:
+      </span>
+      {keywords.map((kw) => (
+        <span
+          key={kw}
+          className="text-xs px-2 py-0.5 rounded-full bg-accent/50 text-accent-foreground border border-border/50"
+        >
+          {kw}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+interface EmailSource {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+}
+
+export const EmailSources = ({
+  emails,
+}: {
+  emails: (EmailSource & { score: number })[];
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [expandedBody, setExpandedBody] = React.useState<
+    Record<string, boolean>
+  >({});
+
+  if (!emails.length) return null;
+
+  return (
+    <div className="my-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 group"
+      >
+        <span>
+          {open ? 'Hide' : 'Show'} {emails.length} source
+          {emails.length !== 1 ? 's' : ''}
+        </span>
+        <svg
+          className={cn(
+            'w-3.5 h-3.5 shrink-0 transition-transform',
+            open && 'rotate-180',
+          )}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19 9l-7 7-7-7"
+          />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-1.5 max-h-72 overflow-y-auto scrollbar-thin scrollbar-track-background scrollbar-thumb-muted pr-1">
+          {emails.map((email) => {
+            const isBodyOpen =
+              expandedBody[email.id] ?? false;
+            const pct = Math.min(email.score, 1);
+
+            return (
+              <div key={email.id}>
+                <button
+                  onClick={() =>
+                    setExpandedBody((prev) => ({
+                      ...prev,
+                      [email.id]: !prev[email.id],
+                    }))
+                  }
+                  className="w-full text-left rounded-md border border-border/60 bg-card/50 hover:bg-card transition-colors overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 px-2.5 py-2">
+                    <div
+                      className="shrink-0 w-1 h-8 rounded-full"
+                      style={{
+                        background:
+                          pct > 0.8
+                            ? 'var(--color-green-500, #22c55e)'
+                            : pct > 0.4
+                              ? 'var(--color-amber-500, #f59e0b)'
+                              : 'var(--color-red-500, #ef4444)',
+                        opacity: 0.7 + pct * 0.3,
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-foreground truncate">
+                        {email.subject || '(no subject)'}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground flex gap-2 mt-0.5">
+                        <span className="opacity-70">
+                          {email.from}
+                        </span>
+                        <span className="opacity-40">
+                          → {email.to}
+                        </span>
+                        <span className="opacity-60 ml-auto tabular-nums">
+                          {(pct * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    <svg
+                      className={cn(
+                        'w-3 h-3 text-muted-foreground/50 shrink-0 transition-transform',
+                        isBodyOpen && 'rotate-180',
+                      )}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                  {isBodyOpen && (
+                    <div className="px-2.5 pb-2.5 border-t border-border/30">
+                      <div className="prose prose-sm prose-invert max-w-none text-xs pt-2 leading-relaxed">
+                        <ReactMarkdown>
+                          {email.body}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

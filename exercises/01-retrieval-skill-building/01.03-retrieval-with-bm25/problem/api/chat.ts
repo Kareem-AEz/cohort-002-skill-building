@@ -3,18 +3,16 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  gateway,
   generateText,
   Output,
   streamText,
   wrapLanguageModel,
   type UIMessage,
 } from 'ai';
-import { lmstudio } from '../../../../../utils.ts';
-import z from 'zod';
-import { searchEmails } from './bm25.ts';
+import { z } from 'zod';
+import { searchEmails, type Email } from './bm25.ts';
 import { devToolsMiddleware } from '@ai-sdk/devtools';
-import type { OpenAICompatibleProviderOptions } from '@ai-sdk/openai-compatible';
-import { xai } from '@ai-sdk/xai';
 
 const KEYWORD_GENERATOR_SYSTEM_PROMPT = `
   You are a helpful email assistant, able to search through emails for information.
@@ -26,27 +24,33 @@ const KEYWORD_GENERATOR_SYSTEM_PROMPT = `
   }
 `;
 
-const modelLMStudio = wrapLanguageModel({
-  model: lmstudio(''),
+const model = wrapLanguageModel({
+  model: gateway('deepseek/deepseek-v4-flash'),
   middleware: [devToolsMiddleware()],
 });
 
-const modelXAi = wrapLanguageModel({
-  model: xai('grok-4-1-fast-reasoning'),
-  middleware: [devToolsMiddleware()],
-});
+export type MyUIMessage = UIMessage<
+  never,
+  {
+    keywords: string[];
+    emails: (Email & { score: number })[];
+  }
+>;
 
 export const POST = async (req: Request): Promise<Response> => {
-  const body: { messages: UIMessage[] } = await req.json();
+  const body: { messages: MyUIMessage[] } = await req.json();
   const { messages } = body;
   const modelMessages = await convertToModelMessages(messages);
 
-  const stream = createUIMessageStream({
+  const stream = createUIMessageStream<MyUIMessage>({
     execute: async ({ writer }) => {
       // TODO: Implement a keyword generator that generates a list of keywords
       // based on the conversation history. Use generateObject to do this.
-      const keywords = await generateText({
-        model: modelXAi,
+      writer.write({
+        type: 'start',
+      });
+      const keywordsText = await generateText({
+        model,
         system: KEYWORD_GENERATOR_SYSTEM_PROMPT,
         messages: modelMessages,
         output: Output.object({
@@ -57,27 +61,43 @@ export const POST = async (req: Request): Promise<Response> => {
             'A list of keywords which will be used in bm25 algorithm to search emails.',
           name: 'keywords',
         }),
-        providerOptions: {
-          lmstudio: {
-            strictJsonSchema: true,
-          } satisfies OpenAICompatibleProviderOptions,
-        },
       });
 
-      // TODO: Use the searchEmails function to get the top X number of
-      // search results based on the keywords
-      const topSearchResults = await searchEmails(
-        keywords.output.keywords,
-      );
+      const keywords = keywordsText.output.keywords;
+
+      const keywordsId = crypto.randomUUID();
+      writer.write({
+        id: keywordsId,
+        type: 'data-keywords',
+        data: keywords,
+      });
+
+      const searchResults = await searchEmails(keywords);
+
+      const topResults = searchResults
+        .filter(
+          (r): r is { email: Email; score: number } =>
+            r.score > 0 && r.email != null,
+        )
+        .slice(0, 10);
+
+      const emailsId = crypto.randomUUID();
+      writer.write({
+        id: emailsId,
+        type: 'data-emails',
+        data: topResults.map((r) => ({
+          ...r.email!,
+          score: r.score,
+        })),
+      });
 
       const emailSnippets = [
         '## Email Snippets',
-        ...topSearchResults.map((result, i) => {
-          const from = result.email?.from || 'unknown';
-          const to = result.email?.to || 'unknown';
-          const subject =
-            result.email?.subject || `email-${i + 1}`;
-          const body = result.email?.body || '';
+        ...topResults.map((result, i) => {
+          const from = result.email.from;
+          const to = result.email.to;
+          const subject = result.email.subject || `email-${i + 1}`;
+          const body = result.email.body;
           const score = result.score;
 
           return [
@@ -94,7 +114,7 @@ export const POST = async (req: Request): Promise<Response> => {
       ].join('\n\n');
 
       const answer = streamText({
-        model: modelLMStudio,
+        model,
         system: `You are a helpful email assistant that answers questions based on email content.
           You should use the provided emails to answer questions accurately.
           ALWAYS cite sources using markdown formatting with the email subject as the source.
@@ -109,7 +129,11 @@ export const POST = async (req: Request): Promise<Response> => {
         ],
       });
 
-      writer.merge(answer.toUIMessageStream());
+      writer.merge(
+        answer.toUIMessageStream({
+          sendStart: false,
+        }),
+      );
     },
   });
 
