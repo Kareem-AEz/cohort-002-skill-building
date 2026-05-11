@@ -3,10 +3,14 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  gateway,
   streamText,
+  wrapLanguageModel,
   type UIMessage,
 } from 'ai';
 import { searchEmails } from './create-embeddings.ts';
+import { ServerResponse } from 'http';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 const formatMessageHistory = (messages: UIMessage[]) => {
   return messages
@@ -32,10 +36,18 @@ export const POST = async (req: Request): Promise<Response> => {
     execute: async ({ writer }) => {
       // TODO: call the searchEmails function with the
       // conversation history to get the search results
-      const searchResults = TODO;
+      console.log(
+        'formatted messages',
+        formatMessageHistory(messages),
+      );
+      const searchResults = await searchEmails(
+        formatMessageHistory(messages),
+      );
 
       // TODO: take the top X search results
-      const topSearchResults = TODO;
+      const topSearchResults = searchResults.slice(0, 5);
+
+      console.log('Top Search Results', topSearchResults);
 
       const emailSnippets = [
         '## Emails',
@@ -60,15 +72,23 @@ export const POST = async (req: Request): Promise<Response> => {
         "Based on the emails above, please answer the user's question. Always cite your sources using the email subject in markdown format.",
       ].join('\n\n');
 
+      const modelMessages =
+        await convertToModelMessages(messages);
+
+      const model = wrapLanguageModel({
+        model: gateway('deepseek/deepseek-v4-pro'),
+        middleware: [devToolsMiddleware()],
+      });
+
       const answer = streamText({
-        model: google('gemini-2.5-flash'),
+        model,
         system: `You are a helpful email assistant that answers questions based on email content.
           You should use the provided emails to answer questions accurately.
           ALWAYS cite sources using markdown formatting with the email subject as the source.
           Be concise but thorough in your explanations.
         `,
         messages: [
-          ...convertToModelMessages(messages),
+          ...modelMessages,
           {
             role: 'user',
             content: emailSnippets,

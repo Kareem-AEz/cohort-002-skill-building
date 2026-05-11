@@ -1,8 +1,16 @@
 import path from 'path';
 import { readFile, writeFile } from 'fs/promises';
-import { cosineSimilarity, embed, embedMany } from 'ai';
+import {
+  cosineSimilarity,
+  embed,
+  embedMany,
+  gateway,
+  wrapEmbeddingModel,
+  wrapLanguageModel,
+} from 'ai';
 import { google } from '@ai-sdk/google';
 import { existsSync } from 'fs';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 export type Email = {
   id: string;
@@ -70,10 +78,6 @@ export const getExistingEmbeddings = async (
     return;
   }
 };
-
-const myEmbeddingModel = google.textEmbeddingModel(
-  'text-embedding-004',
-);
 
 export const embedEmails = async (
   cacheKey: string,
@@ -151,19 +155,36 @@ const embedLotsOfText = async (
     embedding: number[];
   }[]
 > => {
-  // TODO: Implement this function by using the embedMany function
-  throw new Error('Not implemented');
+  const formattedEmails = emails.map(
+    (e) => `${e.subject} - ${e.body}`,
+  );
+  const { embeddings } = await embedMany({
+    model: 'openai/text-embedding-3-small',
+    values: formattedEmails,
+  });
+
+  return embeddings.map((embedding, i) => {
+    return {
+      id: emails[i]?.id!,
+      embedding,
+    };
+  });
 };
 
 const embedOnePieceOfText = async (
   text: string,
 ): Promise<number[]> => {
-  // TODO: Implement this function by using the embed function
+  const { embedding } = await embed({
+    model: 'openai/text-embedding-3-small',
+    value: text,
+  });
+
+  return embedding;
 };
 
 const calculateScore = (
   queryEmbedding: number[],
   embedding: number[],
 ): number => {
-  // TODO: Implement this function by using the cosineSimilarity function
+  return cosineSimilarity(queryEmbedding, embedding);
 };
