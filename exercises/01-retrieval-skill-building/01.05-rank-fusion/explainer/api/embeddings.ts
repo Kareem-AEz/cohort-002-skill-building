@@ -1,5 +1,5 @@
 import { google } from '@ai-sdk/google';
-import { cosineSimilarity, embed, embedMany } from 'ai';
+import { cosineSimilarity, embed, embedMany, gateway } from 'ai';
 import { existsSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
@@ -48,10 +48,6 @@ export const getExistingEmbeddings = async (
     return;
   }
 };
-
-const myEmbeddingModel = google.textEmbeddingModel(
-  'text-embedding-004',
-);
 
 export const embedEmails = async (
   cacheKey: string,
@@ -130,7 +126,7 @@ const embedLotsOfText = async (
   }[]
 > => {
   const result = await embedMany({
-    model: myEmbeddingModel,
+    model: 'openai/text-embedding-3-small',
     values: emails.map((e) => `${e.subject} ${e.body}`),
     maxRetries: 0,
   });
@@ -150,7 +146,7 @@ const calculateScore = (
 
 const embedOnePieceOfText = async (text: string) => {
   const result = await embed({
-    model: myEmbeddingModel,
+    model: 'openai/text-embedding-3-small',
     value: text,
   });
 

@@ -18,9 +18,17 @@ export const searchEmails = async (opts: {
   );
 
   const embeddingsSearchResults =
-    await searchEmailsViaEmbeddings(
-      opts.embeddingsQuery,
-    );
+    await searchEmailsViaEmbeddings(opts.embeddingsQuery);
+
+  console.dir(
+    {
+      bm5: bm25SearchResults[0],
+      semantics: embeddingsSearchResults[0],
+    },
+    {
+      depth: null,
+    },
+  );
 
   const rrfResults = reciprocalRankFusion([
     bm25SearchResults,
