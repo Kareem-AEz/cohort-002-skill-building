@@ -3,12 +3,21 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  generateObject,
+  gateway,
+  generateText,
+  Output,
   streamText,
+  wrapLanguageModel,
   type UIMessage,
 } from 'ai';
 import { z } from 'zod';
 import { searchEmails } from './search.ts';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
+
+const model = wrapLanguageModel({
+  model: gateway('deepseek/deepseek-v4-pro'),
+  middleware: [devToolsMiddleware()],
+});
 
 export const POST = async (req: Request): Promise<Response> => {
   const body: { messages: UIMessage[] } = await req.json();
@@ -19,26 +28,33 @@ export const POST = async (req: Request): Promise<Response> => {
       // TODO: Change the generateObject call so that it generates a search query in
       // addition to the keywords. This will be used for semantic search, which will be a
       // big improvement over passing the entire conversation history.
-      const keywords = await generateObject({
-        model: google('gemini-2.5-flash'),
+      const keywords = await generateText({
+        model,
         system: `You are a helpful email assistant, able to search emails for information.
-          Your job is to generate a list of keywords which will be used to search the emails.
+          Your job is to generate a list of keywords which will be used to search the emails and a search query which will be used in semantic searching.
         `,
-        schema: z.object({
-          keywords: z
-            .array(z.string())
-            .describe(
-              'A list of keywords to search the emails with. Use these for exact terminology.',
-            ),
+        output: Output.object({
+          schema: z.object({
+            keywords: z
+              .array(z.string())
+              .describe(
+                'A list of keywords to search the emails with. Use these for exact terminology.',
+              ),
+            query: z
+              .string()
+              .describe(
+                'A search query to be used in semantic searching',
+              ),
+          }),
         }),
-        messages: convertToModelMessages(messages),
+        messages: await convertToModelMessages(messages),
       });
 
-      console.dir(keywords.object, { depth: null });
+      console.dir(keywords.output.keywords, { depth: null });
 
       const searchResults = await searchEmails({
-        keywordsForBM25: keywords.object.keywords,
-        embeddingsQuery: TODO,
+        keywordsForBM25: keywords.output.keywords,
+        embeddingsQuery: keywords.output.query,
       });
 
       const topSearchResults = searchResults.slice(0, 5);
@@ -69,14 +85,14 @@ export const POST = async (req: Request): Promise<Response> => {
       ].join('\n\n');
 
       const answer = streamText({
-        model: google('gemini-2.5-flash'),
+        model,
         system: `You are a helpful email assistant that answers questions based on email content.
           You should use the provided emails to answer questions accurately.
           ALWAYS cite sources using markdown formatting with the email subject as the source.
           Be concise but thorough in your explanations.
         `,
         messages: [
-          ...convertToModelMessages(messages),
+          ...(await convertToModelMessages(messages)),
           {
             role: 'user',
             content: emailSnippets,

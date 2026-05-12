@@ -49,10 +49,6 @@ export const getExistingEmbeddings = async (
   }
 };
 
-const myEmbeddingModel = google.textEmbeddingModel(
-  'text-embedding-004',
-);
-
 export const embedEmails = async (
   cacheKey: string,
 ): Promise<Embeddings> => {
@@ -103,7 +99,9 @@ export const searchEmailsViaEmbeddings = async (
     );
   }
   const emails = await loadEmails();
-  const emailsMap = new Map(emails.map((email) => [email.id, email]));
+  const emailsMap = new Map(
+    emails.map((email) => [email.id, email]),
+  );
 
   const queryEmbedding = await embedOnePieceOfText(query);
 
@@ -130,8 +128,10 @@ const embedLotsOfText = async (
   }[]
 > => {
   const result = await embedMany({
-    model: myEmbeddingModel,
-    values: emails.map((email) => `${email.subject} ${email.body}`),
+    model: 'openai/text-embedding-3-small',
+    values: emails.map(
+      (email) => `${email.subject} ${email.body}`,
+    ),
     maxRetries: 0,
   });
 
@@ -150,7 +150,7 @@ const calculateScore = (
 
 const embedOnePieceOfText = async (text: string) => {
   const result = await embed({
-    model: myEmbeddingModel,
+    model: 'openai/text-embedding-3-small',
     value: text,
   });
 
