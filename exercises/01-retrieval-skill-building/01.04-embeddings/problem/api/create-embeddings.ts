@@ -1,16 +1,7 @@
 import path from 'path';
 import { readFile, writeFile } from 'fs/promises';
-import {
-  cosineSimilarity,
-  embed,
-  embedMany,
-  gateway,
-  wrapEmbeddingModel,
-  wrapLanguageModel,
-} from 'ai';
-import { google } from '@ai-sdk/google';
+import { cosineSimilarity, embed, embedMany } from 'ai';
 import { existsSync } from 'fs';
-import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 export type Email = {
   id: string;
@@ -145,7 +136,7 @@ export const searchEmails = async (query: string) => {
   return scores.sort((a, b) => b.score - a.score);
 };
 
-export const EMBED_CACHE_KEY = 'emails-google';
+export const EMBED_CACHE_KEY = 'emails-voyage-large';
 
 const embedLotsOfText = async (
   emails: Email[],
@@ -159,7 +150,7 @@ const embedLotsOfText = async (
     (e) => `${e.subject} - ${e.body}`,
   );
   const { embeddings } = await embedMany({
-    model: 'openai/text-embedding-3-small',
+    model: 'voyage/voyage-4-large',
     values: formattedEmails,
   });
 
@@ -175,7 +166,7 @@ const embedOnePieceOfText = async (
   text: string,
 ): Promise<number[]> => {
   const { embedding } = await embed({
-    model: 'openai/text-embedding-3-small',
+    model: 'voyage/voyage-4-lite',
     value: text,
   });
 

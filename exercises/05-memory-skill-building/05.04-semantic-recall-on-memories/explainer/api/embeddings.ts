@@ -1,17 +1,12 @@
-import { google } from '@ai-sdk/google';
 import { cosineSimilarity, embed } from 'ai';
 import type { DB } from './memory-persistence.ts';
-
-const myEmbeddingModel = google.textEmbeddingModel(
-  'text-embedding-004',
-);
 
 export const searchMemoriesViaEmbeddings = async (
   memories: DB.MemoryItem[],
   query: string,
 ) => {
   const queryEmbedding = await embed({
-    model: myEmbeddingModel,
+    model: 'voyage/voyage-4-lite',
     value: query,
   }).then((result) => result.embedding);
 
@@ -25,11 +20,11 @@ export const searchMemoriesViaEmbeddings = async (
   return scores.sort((a, b) => b.score - a.score);
 };
 
-export const EMBED_CACHE_KEY = 'memories-google';
+export const EMBED_CACHE_KEY = 'memories-voyage-large';
 
 export const embedMemory = async (memory: string) => {
   return embed({
-    model: myEmbeddingModel,
+    model: 'voyage/voyage-4-large',
     value: memory,
   }).then((result) => result.embedding);
 };

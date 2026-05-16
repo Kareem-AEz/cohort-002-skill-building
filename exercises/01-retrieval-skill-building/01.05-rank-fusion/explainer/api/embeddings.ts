@@ -1,5 +1,4 @@
-import { google } from '@ai-sdk/google';
-import { cosineSimilarity, embed, embedMany, gateway } from 'ai';
+import { cosineSimilarity, embed, embedMany } from 'ai';
 import { existsSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
@@ -115,7 +114,7 @@ export const searchEmailsViaEmbeddings = async (
   return scores.sort((a, b) => b.score - a.score);
 };
 
-export const EMBED_CACHE_KEY = 'emails-google';
+export const EMBED_CACHE_KEY = 'emails-voyage-large';
 
 const embedLotsOfText = async (
   emails: Email[],
@@ -126,7 +125,7 @@ const embedLotsOfText = async (
   }[]
 > => {
   const result = await embedMany({
-    model: 'openai/text-embedding-3-small',
+    model: 'voyage/voyage-4-large',
     values: emails.map((e) => `${e.subject} ${e.body}`),
     maxRetries: 0,
   });
@@ -146,7 +145,7 @@ const calculateScore = (
 
 const embedOnePieceOfText = async (text: string) => {
   const result = await embed({
-    model: 'openai/text-embedding-3-small',
+    model: 'voyage/voyage-4-lite',
     value: text,
   });
 

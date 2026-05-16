@@ -1,4 +1,3 @@
-import { google } from '@ai-sdk/google';
 import { cosineSimilarity, embed, embedMany } from 'ai';
 import { existsSync, mkdirSync } from 'fs';
 import { readFile, writeFile } from 'fs/promises';
@@ -51,10 +50,6 @@ export const getExistingEmbeddings = async (
     return;
   }
 };
-
-const myEmbeddingModel = google.textEmbeddingModel(
-  'text-embedding-004',
-);
 
 export const embedChunks = async (): Promise<Embeddings> => {
   const chunks = await createChunks();
@@ -137,7 +132,7 @@ export const searchChunksViaEmbeddings = async (
   return scores.sort((a, b) => b.score - a.score);
 };
 
-export const EMBED_CACHE_KEY = 'book-chunks-google';
+export const EMBED_CACHE_KEY = 'book-chunks-voyage-large';
 
 const embedLotsOfText = async (
   chunks: Chunk[],
@@ -149,7 +144,7 @@ const embedLotsOfText = async (
   }[]
 > => {
   const result = await embedMany({
-    model: myEmbeddingModel,
+    model: 'voyage/voyage-4-large',
     values: chunks.map((chunk) => chunk.content),
     maxRetries: 0,
   });
@@ -170,7 +165,7 @@ const calculateScore = (
 
 const embedOnePieceOfText = async (text: string) => {
   const result = await embed({
-    model: myEmbeddingModel,
+    model: 'voyage/voyage-4-lite',
     value: text,
   });
 
