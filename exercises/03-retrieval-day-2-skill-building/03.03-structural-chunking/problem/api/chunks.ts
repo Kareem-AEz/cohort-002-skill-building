@@ -4,16 +4,21 @@ import path from 'path';
 
 const splitter = new RecursiveCharacterTextSplitter({
   // TODO: Set chunk size and overlap
-  chunkSize: 1000,
+  chunkSize: 2000,
   chunkOverlap: 100,
   separators: [
-    // TODO: Add separators for headings (not including h1's)
-    '\n## ',
-    // TODO: Add separators for code blocks
-
-    // TODO: Add separators for chapter markers (e.g., "--- CHAPTER ---")
-
-    '\n\n',
+    '\n--- CHAPTER ---\n', // Chapter boundaries (highest priority)
+    '\n## ', // h2 sections
+    '\n### ', // h3 subsections
+    '\n#### ', // h4
+    '\n##### ', // h5
+    '\n###### ', // h6
+    '```\n\n', // Code block ends
+    '\n\n***\n\n', // Horizontal rules
+    '\n\n---\n\n', // Horizontal rules (alt)
+    '\n\n___\n\n', // Horizontal rules (alt)
+    '\n\n', // Paragraph breaks
+    '\n', // Line breaks
   ],
 });
 
