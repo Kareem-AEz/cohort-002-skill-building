@@ -7,10 +7,14 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ChunkCard,
+  ModeToggle,
   Pagination,
+  RouterDecisionPanel,
+  RoutedSearchForm,
   SearchForm,
   StatsBar,
   Wrapper,
+  type RouterDecision,
 } from './components.tsx';
 import './tailwind.css';
 
@@ -25,6 +29,7 @@ type ChunksResponse = {
     rrfScore: number;
     rerankStatus: RerankStatus;
   }>;
+  router?: RouterDecision;
   stats: {
     total: number;
     avgChars: number;
@@ -36,13 +41,27 @@ type ChunksResponse = {
 };
 
 const ChunkViewer = () => {
-  const [keywords, setKeywords] = useState('TypeScript start beginning');
-  const [semantic, setSemantic] = useState('How did TypeScript start?');
+  const [mode, setMode] = useState<'manual' | 'routed'>('manual');
+
+  // Manual-mode state
+  const [keywords, setKeywords] = useState(
+    'TypeScript start beginning',
+  );
+  const [semantic, setSemantic] = useState(
+    'How did TypeScript start?',
+  );
+
+  // Routed-mode state
+  const [routedQuery, setRoutedQuery] = useState(
+    'How did TypeScript start?',
+  );
+
+  // Shared
   const [page, setPage] = useState(1);
   const [rerankCount, setRerankCount] = useState(30);
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['chunks', keywords, semantic, page, rerankCount],
+  const manualResult = useQuery({
+    queryKey: ['manual', keywords, semantic, page, rerankCount],
     queryFn: async () => {
       const params = new URLSearchParams({
         keywords,
@@ -53,9 +72,29 @@ const ChunkViewer = () => {
       const res = await fetch(`/api/chunks?${params}`);
       return (await res.json()) as ChunksResponse;
     },
+    enabled: mode === 'manual',
+    staleTime: Infinity,
   });
 
-  const handleSearchSubmit = (
+  const routedResult = useQuery({
+    queryKey: ['routed', routedQuery, page, rerankCount],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        query: routedQuery,
+        page: page.toString(),
+        rerankCount: rerankCount.toString(),
+      });
+      const res = await fetch(`/api/routed-chunks?${params}`);
+      return (await res.json()) as ChunksResponse;
+    },
+    enabled: mode === 'routed',
+    staleTime: Infinity,
+  });
+
+  const { data, isLoading } =
+    mode === 'manual' ? manualResult : routedResult;
+
+  const handleManualSubmit = (
     keywordsValue: string,
     semanticValue: string,
     rerankValue: number,
@@ -64,19 +103,49 @@ const ChunkViewer = () => {
     setSemantic(semanticValue);
     setRerankCount(rerankValue);
     setPage(1);
-    refetch();
   };
+
+  const handleRoutedSubmit = (
+    queryValue: string,
+    rerankValue: number,
+  ) => {
+    setRoutedQuery(queryValue);
+    setRerankCount(rerankValue);
+    setPage(1);
+  };
+
+  const handleModeChange = (next: 'manual' | 'routed') => {
+    setMode(next);
+    setPage(1);
+  };
+
+  const modeToggle = (
+    <ModeToggle mode={mode} onChange={handleModeChange} />
+  );
 
   return (
     <Wrapper
       header={
         <>
-          <SearchForm
-            keywordsValue={keywords}
-            semanticValue={semantic}
-            rerankValue={rerankCount}
-            onSubmit={handleSearchSubmit}
-          />
+          {mode === 'manual' ? (
+            <SearchForm
+              keywordsValue={keywords}
+              semanticValue={semantic}
+              rerankValue={rerankCount}
+              modeToggle={modeToggle}
+              onSubmit={handleManualSubmit}
+            />
+          ) : (
+            <RoutedSearchForm
+              queryValue={routedQuery}
+              rerankValue={rerankCount}
+              modeToggle={modeToggle}
+              onSubmit={handleRoutedSubmit}
+            />
+          )}
+          {mode === 'routed' && data?.router && (
+            <RouterDecisionPanel decision={data.router} />
+          )}
           {isLoading ? (
             <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm">
               <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-center">

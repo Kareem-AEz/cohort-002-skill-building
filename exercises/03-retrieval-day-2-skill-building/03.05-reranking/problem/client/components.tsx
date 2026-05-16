@@ -6,7 +6,17 @@ import {
   CheckCircle,
   XCircle,
   MinusCircle,
+  Sparkles,
 } from 'lucide-react';
+
+export type RouterDecision = {
+  reasoning: string;
+  mode: 'lexical' | 'semantic' | 'balanced' | 'hyde';
+  keywords: string[];
+  semanticQuery: string;
+  hydePassage: string | null;
+  queryVariants: string[];
+};
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
@@ -189,11 +199,13 @@ export const SearchForm = ({
   keywordsValue,
   semanticValue,
   rerankValue,
+  modeToggle,
   onSubmit,
 }: {
   keywordsValue: string;
   semanticValue: string;
   rerankValue: number;
+  modeToggle?: React.ReactNode;
   onSubmit: (keywordsValue: string, semanticValue: string, rerankValue: number) => void;
 }) => {
   const handleSubmit = (e: React.FormEvent) => {
@@ -213,6 +225,9 @@ export const SearchForm = ({
           id="search-form"
           className="flex flex-col gap-3 max-w-3xl"
         >
+          {modeToggle && (
+            <div className="flex justify-end">{modeToggle}</div>
+          )}
           <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex flex-col gap-1 flex-1">
               <label className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -286,6 +301,204 @@ export const SearchForm = ({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+};
+
+export const ModeToggle = ({
+  mode,
+  onChange,
+}: {
+  mode: 'manual' | 'routed';
+  onChange: (mode: 'manual' | 'routed') => void;
+}) => {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-card p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange('manual')}
+        className={cn(
+          'px-3 py-1 text-xs font-medium rounded-md transition-all',
+          mode === 'manual'
+            ? 'bg-accent text-accent-foreground'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        Manual
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('routed')}
+        className={cn(
+          'px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5',
+          mode === 'routed'
+            ? 'bg-accent text-accent-foreground'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        <Sparkles className="w-3 h-3" />
+        Routed
+      </button>
+    </div>
+  );
+};
+
+export const RoutedSearchForm = ({
+  queryValue,
+  rerankValue,
+  modeToggle,
+  onSubmit,
+}: {
+  queryValue: string;
+  rerankValue: number;
+  modeToggle: React.ReactNode;
+  onSubmit: (queryValue: string, rerankValue: number) => void;
+}) => {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const query = formData.get('query') as string;
+    const rerank = formData.get('rerank') as string;
+    onSubmit(query, parseInt(rerank, 10) || 0);
+  };
+
+  return (
+    <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm">
+      <div className="max-w-7xl mx-auto py-3 px-4">
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-3 max-w-3xl"
+        >
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-purple-400" />
+              Ask anything (the router decides how to retrieve)
+            </label>
+            {modeToggle}
+          </div>
+          <input
+            type="text"
+            placeholder="e.g. How do I make my code safer with TypeScript?"
+            defaultValue={queryValue}
+            name="query"
+            className={cn(
+              'w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-all',
+              'placeholder:text-muted-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-transparent',
+              'hover:border-ring/50',
+            )}
+          />
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-muted-foreground whitespace-nowrap">
+              Rerank top:
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              defaultValue={rerankValue}
+              name="rerank"
+              className={cn(
+                'w-20 rounded-md border border-input bg-card px-3 py-1.5 text-xs shadow-sm transition-all',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-transparent',
+                'hover:border-ring/50',
+              )}
+            />
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              chunks
+            </span>
+            <button
+              type="submit"
+              className={cn(
+                'px-4 py-2 text-sm font-medium rounded-lg border border-border transition-all ml-auto',
+                'bg-card text-foreground hover:bg-accent hover:text-accent-foreground',
+              )}
+            >
+              Search
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const ModeBadge = ({ mode }: { mode: RouterDecision['mode'] }) => {
+  const styles: Record<RouterDecision['mode'], string> = {
+    lexical: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    semantic: 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+    balanced: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+    hyde: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  };
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide border',
+        styles[mode],
+      )}
+    >
+      {mode}
+    </span>
+  );
+};
+
+export const RouterDecisionPanel = ({
+  decision,
+}: {
+  decision: RouterDecision;
+}) => {
+  return (
+    <div className="flex-shrink-0 border-b border-border bg-muted/10">
+      <div className="max-w-7xl mx-auto px-4 py-3 text-xs space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-muted-foreground">Router →</span>
+          <ModeBadge mode={decision.mode} />
+          <span className="text-muted-foreground">
+            keywords:
+          </span>
+          <span className="font-mono text-foreground">
+            {decision.keywords.join(' · ')}
+          </span>
+        </div>
+        {decision.reasoning && (
+          <div className="flex items-start gap-2">
+            <span className="text-muted-foreground whitespace-nowrap">
+              why:
+            </span>
+            <span className="text-foreground/80 italic">
+              {decision.reasoning}
+            </span>
+          </div>
+        )}
+        <div className="flex items-start gap-2">
+          <span className="text-muted-foreground whitespace-nowrap">
+            semantic:
+          </span>
+          <span className="font-mono text-foreground">
+            {decision.semanticQuery}
+          </span>
+        </div>
+        {decision.hydePassage && (
+          <div className="flex items-start gap-2">
+            <span className="text-muted-foreground whitespace-nowrap">
+              hyde:
+            </span>
+            <span className="font-mono text-foreground italic">
+              {decision.hydePassage}
+            </span>
+          </div>
+        )}
+        {decision.queryVariants.length > 0 && (
+          <div className="flex items-start gap-2">
+            <span className="text-muted-foreground whitespace-nowrap">
+              variants:
+            </span>
+            <span className="font-mono text-foreground">
+              {decision.queryVariants.join(' | ')}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

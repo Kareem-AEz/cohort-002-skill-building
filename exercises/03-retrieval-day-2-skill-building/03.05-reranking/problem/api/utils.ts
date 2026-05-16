@@ -67,35 +67,51 @@ const RRF_K = 60;
 export function reciprocalRankFusion(
   rankings: { chunk: string; score: number }[][],
 ): { chunk: string; score: number }[] {
+  return weightedReciprocalRankFusion(
+    rankings.map((ranking) => ({ ranking, weight: 1 })),
+  );
+}
+
+export function weightedReciprocalRankFusion(
+  sources: {
+    ranking: { chunk: string; score: number }[];
+    weight: number;
+  }[],
+): { chunk: string; score: number }[] {
   const rrfScores = new Map<string, number>();
   const chunkMap = new Map<
     string,
     { chunk: string; score: number }
   >();
 
-  // Process each ranking list
-  rankings.forEach((ranking) => {
+  sources.forEach(({ ranking, weight }) => {
     ranking.forEach((doc, rank) => {
-      // Get current RRF score for this document
       const currentScore = rrfScores.get(doc.chunk) || 0;
-
-      // Add contribution from this ranking list
-      const contribution = 1 / (RRF_K + rank);
+      const contribution = weight / (RRF_K + rank);
       rrfScores.set(doc.chunk, currentScore + contribution);
-
-      // Store document reference
       chunkMap.set(doc.chunk, doc);
     });
   });
 
-  // Sort by RRF score (descending)
   return Array.from(rrfScores.entries())
-    .sort(([, scoreA], [, scoreB]) => scoreB - scoreA)
-    .map(([chunkContent]) => {
-      const doc = chunkMap.get(chunkContent)!;
-      return {
-        chunk: doc.chunk,
-        score: rrfScores.get(chunkContent)!,
-      };
-    });
+    .sort(([, a], [, b]) => b - a)
+    .map(([chunkContent]) => ({
+      chunk: chunkMap.get(chunkContent)!.chunk,
+      score: rrfScores.get(chunkContent)!,
+    }));
 }
+
+export const fusionWeightsForMode = (
+  mode: 'lexical' | 'semantic' | 'balanced' | 'hyde',
+): { bm25: number; embedding: number } => {
+  switch (mode) {
+    case 'lexical':
+      return { bm25: 0.7, embedding: 0.3 };
+    case 'semantic':
+      return { bm25: 0.3, embedding: 0.7 };
+    case 'balanced':
+      return { bm25: 0.5, embedding: 0.5 };
+    case 'hyde':
+      return { bm25: 0.2, embedding: 0.8 };
+  }
+};

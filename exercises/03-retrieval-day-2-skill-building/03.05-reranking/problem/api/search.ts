@@ -1,9 +1,12 @@
-import { google } from '@ai-sdk/google';
-import { generateObject } from 'ai';
-import { z } from 'zod';
+import { rerank } from 'ai';
 import { searchViaBM25 } from './bm25.ts';
 import { searchChunksViaEmbeddings } from './embeddings.ts';
-import { createChunks, reciprocalRankFusion } from './utils.ts';
+import { routeQuery, type RetrievalMode } from './router.ts';
+import {
+  createChunks,
+  fusionWeightsForMode,
+  weightedReciprocalRankFusion,
+} from './utils.ts';
 
 export type RerankStatus =
   | 'approved'
@@ -19,40 +22,105 @@ export type ChunkWithScores = {
   rerankOrder?: number; // Position in reranker's output (lower = more relevant)
 };
 
-export const searchChunks = async (opts: {
+type SearchOpts = {
   keywordsForBM25?: string[];
   embeddingsQuery?: string;
+  hydePassage?: string | null;
+  queryVariants?: string[];
+  mode?: RetrievalMode;
   rerankCount?: number;
-}): Promise<ChunkWithScores[]> => {
+};
+
+export const searchChunks = async (
+  opts: SearchOpts,
+): Promise<ChunkWithScores[]> => {
   const chunks = await createChunks();
   const chunkTexts = chunks.map((c) => c.content);
+  const mode: RetrievalMode = opts.mode ?? 'balanced';
+  const weights = fusionWeightsForMode(mode);
 
+  // --- Lexical ---
   const bm25SearchResults =
     opts.keywordsForBM25 && opts.keywordsForBM25.length > 0
       ? await searchViaBM25(chunkTexts, opts.keywordsForBM25)
       : [];
 
-  const embeddingsSearchResults = opts.embeddingsQuery
-    ? await searchChunksViaEmbeddings(
-        chunks,
-        opts.embeddingsQuery,
-      )
-    : [];
+  // --- Semantic: run primary + HyDE + variants in parallel ---
+  // Track each source's role so we can weight them differently in fusion.
+  type EmbedSourceKind = 'primary' | 'hyde' | 'variant';
+  const embeddingSources: { query: string; kind: EmbedSourceKind }[] = [];
+  if (opts.embeddingsQuery)
+    embeddingSources.push({
+      query: opts.embeddingsQuery,
+      kind: 'primary',
+    });
+  if (mode === 'hyde' && opts.hydePassage)
+    embeddingSources.push({
+      query: opts.hydePassage,
+      kind: 'hyde',
+    });
+  if (opts.queryVariants?.length)
+    embeddingSources.push(
+      ...opts.queryVariants.map(
+        (q): { query: string; kind: EmbedSourceKind } => ({
+          query: q,
+          kind: 'variant',
+        }),
+      ),
+    );
 
-  const rrfResults = reciprocalRankFusion([
-    embeddingsSearchResults,
-    bm25SearchResults,
+  const embeddingRankings = await Promise.all(
+    embeddingSources.map((s) =>
+      searchChunksViaEmbeddings(chunks, s.query),
+    ),
+  );
+
+  // --- Weighted fusion ---
+  // Primary semantic query dominates the embedding budget. HyDE is a
+  // strong secondary signal. Variants are tertiary — each contributes
+  // a little, collectively they don't drown the primary.
+  const BASE_WEIGHTS: Record<EmbedSourceKind, number> = {
+    primary: 1.0,
+    hyde: 0.4,
+    variant: 0.15,
+  };
+
+  const totalBase = embeddingSources.reduce(
+    (sum, s) => sum + BASE_WEIGHTS[s.kind],
+    0,
+  );
+
+  const embeddingFusionSources = embeddingRankings.map(
+    (ranking, i) => ({
+      ranking,
+      weight:
+        totalBase > 0
+          ? (BASE_WEIGHTS[embeddingSources[i]!.kind] / totalBase) *
+            weights.embedding
+          : 0,
+    }),
+  );
+
+  const rrfResults = weightedReciprocalRankFusion([
+    ...(bm25SearchResults.length > 0
+      ? [{ ranking: bm25SearchResults, weight: weights.bm25 }]
+      : []),
+    ...embeddingFusionSources,
   ]);
 
-  // Create maps for quick lookup of individual scores
+  // --- Per-chunk score maps for UI display ---
   const bm25Map = new Map(
     bm25SearchResults.map((r) => [r.chunk, r.score]),
   );
-  const embeddingMap = new Map(
-    embeddingsSearchResults.map((r) => [r.chunk, r.score]),
-  );
+  // Show the best embedding score across all sources (semantic + HyDE + variants).
+  const embeddingMap = new Map<string, number>();
+  for (const ranking of embeddingRankings) {
+    for (const r of ranking) {
+      const prev = embeddingMap.get(r.chunk) ?? -Infinity;
+      if (r.score > prev) embeddingMap.set(r.chunk, r.score);
+    }
+  }
 
-  // If no reranking needed, return all chunks with 'not-passed' status
   if (!opts.rerankCount || opts.rerankCount === 0) {
     return rrfResults.map((result) => ({
       chunk: result.chunk,
@@ -63,34 +131,11 @@ export const searchChunks = async (opts: {
     }));
   }
 
-  // Take top N results for reranking
+  // --- Rerank top N ---
   const topResultsForReranking = rrfResults.slice(
     0,
     opts.rerankCount,
   );
-
-  // Assign IDs to chunks for reranking
-  const topResultsWithId = topResultsForReranking.map(
-    (result, i) => ({
-      ...result,
-      id: i,
-    }),
-  );
-
-  const topResultsAsMap = new Map(
-    topResultsWithId.map((result) => [result.id, result]),
-  );
-
-  const chunksWithId = topResultsWithId
-    .map((result) =>
-      [
-        `## ID: ${result.id}`,
-        `<content>`,
-        result.chunk,
-        `</content>`,
-      ].join('\n\n'),
-    )
-    .join('\n\n');
 
   const searchQuery = [
     opts.keywordsForBM25?.join(' '),
@@ -99,43 +144,37 @@ export const searchChunks = async (opts: {
     .filter(Boolean)
     .join(' ');
 
-  // TODO: Call generateObject to generate an array of IDs
-  // of the most relevant chunks, based on the user's search query.
-  // You should tell the LLM to return only the IDs, not the full chunks.
-  // You should also tell the LLM to be selective and only include chunks
-  // that are genuinely helpful for answering the question.
-  // If a chunk is only tangentially related or not relevant,
-  // exclude its ID.
-  const rerankedResults = TODO;
+  const { ranking } = await rerank({
+    model: 'voyage/rerank-2.5-lite',
+    documents: topResultsForReranking.map((r) => r.chunk),
+    query: searchQuery,
+  });
 
-  const approvedChunkIds = rerankedResults.object.resultIds;
+  // Precision filter: keep only chunks the reranker is actually confident about.
+  // Cap at 10 to avoid runaway approvals on very-relevant corpora.
+  const SCORE_THRESHOLD = 0.3;
+  const MAX_APPROVED = 10;
+  const approvedRanking = ranking
+    .filter((r) => r.score >= SCORE_THRESHOLD)
+    .slice(0, MAX_APPROVED);
 
-  // Create order map from reranker results
   const rerankOrderMap = new Map(
-    approvedChunkIds.map((id, index) => [
-      topResultsAsMap.get(id)?.chunk,
+    approvedRanking.map((r, index) => [
+      topResultsForReranking[r.originalIndex]!.chunk,
       index,
     ]),
-  );
-
-  const approvedChunkSet = new Set(
-    approvedChunkIds
-      .map((id) => topResultsAsMap.get(id)?.chunk)
-      .filter((chunk) => chunk !== undefined),
   );
 
   const passedToRerankerSet = new Set(
     topResultsForReranking.map((r) => r.chunk),
   );
 
-  // Combine all scores and rerank status
   const chunksWithStatus = rrfResults.map((result) => {
+    const rerankOrder = rerankOrderMap.get(result.chunk);
     let rerankStatus: RerankStatus;
-    let rerankOrder: number | undefined;
 
-    if (approvedChunkSet.has(result.chunk)) {
+    if (rerankOrder !== undefined) {
       rerankStatus = 'approved';
-      rerankOrder = rerankOrderMap.get(result.chunk);
     } else if (passedToRerankerSet.has(result.chunk)) {
       rerankStatus = 'rejected';
     } else {
@@ -152,12 +191,7 @@ export const searchChunks = async (opts: {
     };
   });
 
-  // Sort by rerank status and order:
-  // 1. Approved chunks (sorted by reranker order)
-  // 2. Rejected chunks (sorted by RRF score)
-  // 3. Not-passed chunks (sorted by RRF score)
   return chunksWithStatus.sort((a, b) => {
-    // Approved chunks come first, sorted by rerank order
     if (
       a.rerankStatus === 'approved' &&
       b.rerankStatus === 'approved'
@@ -167,7 +201,6 @@ export const searchChunks = async (opts: {
     if (a.rerankStatus === 'approved') return -1;
     if (b.rerankStatus === 'approved') return 1;
 
-    // Rejected chunks come next, sorted by RRF score
     if (
       a.rerankStatus === 'rejected' &&
       b.rerankStatus === 'rejected'
@@ -177,7 +210,31 @@ export const searchChunks = async (opts: {
     if (a.rerankStatus === 'rejected') return -1;
     if (b.rerankStatus === 'rejected') return 1;
 
-    // Not-passed chunks come last, sorted by RRF score
     return b.rrfScore - a.rrfScore;
   });
+};
+
+/**
+ * Entry point: takes a raw user query, runs it through the router,
+ * and executes the full retrieval pipeline using the router's decisions.
+ */
+export const searchChunksFromQuery = async (opts: {
+  query: string;
+  rerankCount?: number;
+}): Promise<{
+  routerOutput: Awaited<ReturnType<typeof routeQuery>>;
+  results: ChunkWithScores[];
+}> => {
+  const routerOutput = await routeQuery(opts.query);
+
+  const results = await searchChunks({
+    keywordsForBM25: routerOutput.keywords,
+    embeddingsQuery: routerOutput.semanticQuery,
+    hydePassage: routerOutput.hydePassage,
+    queryVariants: routerOutput.queryVariants,
+    mode: routerOutput.mode,
+    rerankCount: opts.rerankCount,
+  });
+
+  return { routerOutput, results };
 };
