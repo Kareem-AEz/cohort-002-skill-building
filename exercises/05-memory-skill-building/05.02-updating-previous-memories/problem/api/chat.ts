@@ -3,9 +3,12 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  gateway,
   generateId,
-  generateObject,
+  generateText,
+  Output,
   streamText,
+  wrapLanguageModel,
   type UIMessage,
 } from 'ai';
 import { z } from 'zod';
@@ -16,6 +19,7 @@ import {
   updateMemory,
   type DB,
 } from './memory-persistence.ts';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 export type MyMessage = UIMessage<unknown, {}>;
 
@@ -27,6 +31,11 @@ const formatMemory = (memory: DB.MemoryItem) => {
   ].join('\n');
 };
 
+const model = wrapLanguageModel({
+  model: gateway('deepseek/deepseek-v4-flash'),
+  middleware: [devToolsMiddleware()],
+});
+
 export const POST = async (req: Request): Promise<Response> => {
   const body: { messages: MyMessage[] } = await req.json();
   const { messages } = body;
@@ -37,7 +46,7 @@ export const POST = async (req: Request): Promise<Response> => {
   const stream = createUIMessageStream<MyMessage>({
     execute: async ({ writer }) => {
       const result = streamText({
-        model: google('gemini-2.5-flash-lite'),
+        model,
         system: `You are a helpful assistant that can answer questions and help with tasks.
 
         The date is ${new Date().toISOString().split('T')[0]}.
@@ -48,30 +57,18 @@ export const POST = async (req: Request): Promise<Response> => {
         ${memoriesText}
         </memories>
         `,
-        messages: convertToModelMessages(messages),
+        messages: await convertToModelMessages(messages),
       });
 
       writer.merge(result.toUIMessageStream());
     },
     onFinish: async (response) => {
       const allMessages = [...messages, ...response.messages];
+      const memoryIds = memories.map((memory) => memory.id);
+      const memoryIdEnums = z.enum(memoryIds);
 
-      const memoriesResult = await generateObject({
-        model: google('gemini-2.5-flash'),
-        schema: z.object({
-          // TODO: Define the schema for the updates. Updates should
-          // be an array of objects with the following fields:
-          // - id: The ID of the existing memory to update
-          // - memory: The updated memory content
-          updates: TODO,
-          // TODO: Define the schema for the deletions. Deletions should
-          // be an array of strings, each representing the ID of a memory
-          // to delete
-          deletions: TODO,
-          // TODO: Define the schema for the additions. Additions should
-          // be an array of strings, each representing a new memory to add
-          additions: TODO,
-        }),
+      const memoriesResult = await generateText({
+        model,
         // TODO: Update the system prompt to tell it to return updates,
         // deletions and additions
         system: `You are a memory extraction agent. Your task is to analyze the conversation history and extract permanent memories about the user.
@@ -95,40 +92,85 @@ export const POST = async (req: Request): Promise<Response> => {
         - "User is currently debugging code" (situational)
         - "User said hello" (trivial interaction)
 
-        Extract any new permanent memories from this conversation. Return an array of memory strings that should be added to the user's permanent memory. Each memory should be a concise, factual statement about the user.
+        MEMORY MANAGEMENT TASKS:
+        1. ADDITIONS: Extract any new permanent memories from this conversation that aren't already covered by existing memories.
+        2. UPDATES: Identify existing memories that need to be updated with new information (e.g., if user mentioned they moved cities, update their location memory).
+        3. DELETIONS: Identify existing memories that are now outdated, incorrect, or no longer relevant based on new information in the conversation.
 
-        If no new permanent memories are found, return an empty array.
-        
+        For each memory operation:
+        - Additions: Return concise, factual statements about the user
+        - Updates: Provide the memory ID and the updated content
+        - Deletions: Provide the memory ID of memories that should be removed
+
         EXISTING MEMORIES:
         ${memoriesText}
+
+        If no memory changes are needed, return empty arrays for all operations.
         `,
-        messages: convertToModelMessages(allMessages),
+        messages: await convertToModelMessages(allMessages),
+        output: Output.object({
+          name: 'memories',
+          description:
+            "The new memories to add to the user's permanent memory",
+          schema: z.object({
+            additions: z
+              .array(z.string())
+              .describe('New memories to add'),
+            updates: z.array(
+              z.object({
+                id: memoryIdEnums.describe(
+                  'The ID of the existing memory to update',
+                ),
+                memory: z
+                  .string()
+                  .describe('The updated memory content'),
+              }),
+            ),
+            deletions: z
+              .array(z.string())
+              .describe('The IDs of the memories to delete'),
+          }),
+        }),
       });
 
-      const { updates, deletions, additions } =
-        memoriesResult.object;
+      const { additions, updates, deletions } =
+        memoriesResult.output;
 
+      console.log('Memory IDs', memoryIds);
       console.log('Updates', updates);
       console.log('Deletions', deletions);
       console.log('Additions', additions);
 
       // Only delete memories that are not being updated
       const filteredDeletions = deletions.filter(
-        (deletion) =>
+        (deletion: string) =>
           !updates.some((update) => update.id === deletion),
       );
 
       // TODO: Update the memories that need to be updated
       // by calling updateMemory for each update
-      TODO;
+      updates.forEach((update) =>
+        updateMemory(update.id, {
+          memory: update.memory,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
 
       // TODO: Delete the memories that need to be deleted
       // by calling deleteMemory for each filtered deletion
-      TODO;
+      filteredDeletions.forEach((deletion) =>
+        deleteMemory(deletion),
+      );
 
       // TODO: Save the new memories by calling saveMemories
       // with the new memories
-      TODO;
+      saveMemories(
+        additions.map((addition) => ({
+          id: generateId(),
+          memory: addition,
+          createdAt: new Date().toISOString(),
+        })),
+      );
     },
   });
 
