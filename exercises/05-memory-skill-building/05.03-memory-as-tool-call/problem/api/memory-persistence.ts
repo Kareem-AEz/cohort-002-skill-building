@@ -12,6 +12,7 @@ export namespace DB {
     id: string;
     memory: string;
     createdAt: string;
+    updatedAt?: string;
   }
 
   export interface PersistenceData {
@@ -83,7 +84,7 @@ export function saveMemories(memories: DB.MemoryItem[]): void {
 
 export function updateMemory(
   memoryId: string,
-  memory: Omit<DB.MemoryItem, 'id'>,
+  memory: Omit<DB.MemoryItem, 'id' | 'createdAt'>,
 ): boolean {
   const data = loadDB();
   data.memories = data.memories.map((m) =>
