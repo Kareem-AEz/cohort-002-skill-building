@@ -1,4 +1,5 @@
 import { cosineSimilarity, embed } from 'ai';
+import type { VoyageEmbeddingModelOptions } from '@ai-sdk/voyage';
 import type { DB } from './memory-persistence.ts';
 
 export const searchMemoriesViaEmbeddings = async (
@@ -8,6 +9,12 @@ export const searchMemoriesViaEmbeddings = async (
   const queryEmbedding = await embed({
     model: 'voyage/voyage-4-lite',
     value: query,
+    providerOptions: {
+      voyage: {
+        inputType: 'query',
+        outputDimension: 512,
+      } satisfies VoyageEmbeddingModelOptions,
+    },
   }).then((result) => result.embedding);
 
   const scores = memories.map((memory) => {
@@ -26,5 +33,11 @@ export const embedMemory = async (memory: string) => {
   return embed({
     model: 'voyage/voyage-4-large',
     value: memory,
+    providerOptions: {
+      voyage: {
+        inputType: 'query',
+        outputDimension: 512,
+      } satisfies VoyageEmbeddingModelOptions,
+    },
   }).then((result) => result.embedding);
 };

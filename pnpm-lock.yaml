@@ -26,6 +26,9 @@ importers:
       '@ai-sdk/react':
         specifier: 3.0.179
         version: 3.0.179(react@19.2.6)(zod@4.4.3)
+      '@ai-sdk/voyage':
+        specifier: ^1.0.4
+        version: 1.0.4(zod@4.4.3)
       '@ai-sdk/xai':
         specifier: ^3.0.89
         version: 3.0.89(zod@4.4.3)
@@ -209,6 +212,12 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
+
+  '@ai-sdk/voyage@1.0.4':
+    resolution: {integrity: sha512-aHw6Ll/k4X3KcjhGJQ7bL1Ot25/+7OirnsvwhV76q5EhEr5gD8QtRgkqaRa4PegYnrg4E9PIU5P8PRn5Woh1jw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   '@ai-sdk/xai@3.0.89':
     resolution: {integrity: sha512-ecFE4iQnWePrxPYuSUYCh8lpoKZ52J3jao5whDVC3+Z9Cu/XeyOe2oUGzsYSUPgbJNi/ZmD/KN69bHbUcAHFvw==}
@@ -3391,6 +3400,12 @@ snapshots:
       throttleit: 2.1.0
     transitivePeerDependencies:
       - zod
+
+  '@ai-sdk/voyage@1.0.4(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.10
+      '@ai-sdk/provider-utils': 4.0.27(zod@4.4.3)
+      zod: 4.4.3
 
   '@ai-sdk/xai@3.0.89(zod@4.4.3)':
     dependencies:

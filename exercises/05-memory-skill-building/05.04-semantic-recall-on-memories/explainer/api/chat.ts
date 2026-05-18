@@ -4,9 +4,13 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   embed,
+  gateway,
   generateId,
   generateObject,
+  generateText,
+  Output,
   streamText,
+  wrapLanguageModel,
   type UIMessage,
 } from 'ai';
 import { z } from 'zod';
@@ -19,8 +23,14 @@ import {
 } from './memory-persistence.ts';
 import { embedMemory } from './embeddings.ts';
 import { searchMemories } from './search.ts';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 export type MyMessage = UIMessage<unknown, {}>;
+
+const model = wrapLanguageModel({
+  model: gateway('deepseek/deepseek-v4-flash'),
+  middleware: [devToolsMiddleware()],
+});
 
 const formatMemory = (memory: DB.MemoryItem) => {
   return [
@@ -34,32 +44,34 @@ export const POST = async (req: Request): Promise<Response> => {
   const body: { messages: MyMessage[] } = await req.json();
   const { messages } = body;
 
-  const queryRewriterResult = await generateObject({
-    model: google('gemini-2.5-flash'),
+  const queryRewriterResult = await generateText({
+    model,
     system: `You are a helpful memory search assistant, able to generate effective search queries for finding relevant memories in a user's memory system.
       Your job is to generate a list of keywords and a search query which will be used to search through the user's stored memories.
       The memories contain personal information, preferences, facts, and details about the user that have been shared in previous conversations.
     `,
-    schema: z.object({
-      keywords: z
-        .array(z.string())
-        .describe(
-          "A list of keywords to search the user's memories with. Use these for exact terminology and specific terms mentioned in the conversation.",
-        ),
-      searchQuery: z
-        .string()
-        .describe(
-          "A search query which will be used to search the user's memories. Use this for broader semantic search terms that capture the intent and context of the conversation.",
-        ),
+    output: Output.object({
+      schema: z.object({
+        keywords: z
+          .array(z.string())
+          .describe(
+            "A list of keywords to search the user's memories with. Use these for exact terminology and specific terms mentioned in the conversation.",
+          ),
+        searchQuery: z
+          .string()
+          .describe(
+            "A search query which will be used to search the user's memories. Use this for broader semantic search terms that capture the intent and context of the conversation.",
+          ),
+      }),
     }),
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
   });
 
-  console.dir(queryRewriterResult.object, { depth: null });
+  console.dir(queryRewriterResult.output, { depth: null });
 
   const foundMemories = await searchMemories({
-    searchQuery: queryRewriterResult.object.searchQuery,
-    keywordsForBM25: queryRewriterResult.object.keywords,
+    searchQuery: queryRewriterResult.output.searchQuery,
+    keywordsForBM25: queryRewriterResult.output.keywords,
   });
 
   const formattedMemories = foundMemories
@@ -83,7 +95,7 @@ export const POST = async (req: Request): Promise<Response> => {
         ${formattedMemories}
         </memories>
         `,
-        messages: convertToModelMessages(messages),
+        messages: await convertToModelMessages(messages),
       });
 
       writer.merge(result.toUIMessageStream());
@@ -156,7 +168,7 @@ export const POST = async (req: Request): Promise<Response> => {
         ${formattedMemories}
 
         If no memory changes are needed, return empty arrays for all operations.`,
-        messages: convertToModelMessages(allMessages),
+        messages: await convertToModelMessages(allMessages),
       });
 
       const { updates, deletions, additions } =
