@@ -41,7 +41,7 @@
     "@types/react-dom": "^19.1.6",
     "ai": "6.0.177",
     "drizzle-orm": "^0.45.2",
-    "evalite": "1.0.0-beta.15",
+    "evalite": "1.0.0-beta.16",
     "hono": "^4.8.4",
     "js-tiktoken": "^1.0.21",
     "langfuse": "^3.38.4",

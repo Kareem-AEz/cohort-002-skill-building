@@ -1,9 +1,19 @@
-import { stepCountIs, type UIMessage } from 'ai';
+import {
+  gateway,
+  stepCountIs,
+  wrapLanguageModel,
+  type UIMessage,
+} from 'ai';
 import { evalite } from 'evalite';
 import { runAgent } from './agent.ts';
-import { google } from '@ai-sdk/google';
 import { createUIMessageFixture } from '#shared/create-ui-message-fixture.ts';
 import { wrapAISDKModel } from 'evalite/ai-sdk';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
+
+const model = wrapLanguageModel({
+  model: gateway('deepseek/deepseek-v4-flash'),
+  middleware: [devToolsMiddleware()],
+});
 
 evalite('Agent Tool Call Evaluation', {
   data: [
@@ -26,21 +36,32 @@ evalite('Agent Tool Call Evaluation', {
     },
   ],
   task: async (messages) => {
-    const result = runAgent(
-      wrapAISDKModel(google('gemini-2.5-flash')),
+    const result = await runAgent(
+      model,
       messages,
       stepCountIs(1),
     );
 
     // TODO: Consume the stream so the agent completes execution
+    await result.consumeStream();
 
     // TODO: Extract the toolCalls from the result
     // The result object has a toolCalls property that you need to await
     // Map the toolCalls to include only toolName and input for easier inspection
+    const toolCalls = (await result.toolCalls).map(
+      (toolCall) => ({
+        toolName: toolCall.toolName,
+        input: toolCall.input,
+      }),
+    );
 
     // TODO: Get the text response from the result
+    const text = await result.text;
 
     // TODO: Return an object with toolCalls and text properties
-    return {};
+    return {
+      toolCalls,
+      text,
+    };
   },
 });

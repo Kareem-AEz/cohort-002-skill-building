@@ -354,14 +354,14 @@ const tools = {
   }),
 };
 
-export const runAgent = (
+export const runAgent = async (
   model: LanguageModel,
   messages: UIMessage[],
   stopWhen: StopCondition<any>,
 ) => {
   const result = streamText({
     model,
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
     tools,
     stopWhen,
     system: `Today's date is ${new Date().toISOString().split('T')[0]}.`,
