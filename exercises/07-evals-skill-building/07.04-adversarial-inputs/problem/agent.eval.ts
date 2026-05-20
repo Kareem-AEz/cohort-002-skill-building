@@ -1,4 +1,4 @@
-import { stepCountIs } from 'ai';
+import { gateway, stepCountIs } from 'ai';
 import { evalite } from 'evalite';
 import { runAgent } from './agent.ts';
 import { google } from '@ai-sdk/google';
@@ -8,12 +8,12 @@ import { wrapAISDKModel } from 'evalite/ai-sdk';
 
 evalite.each([
   {
-    name: 'Gemini 2.5 Flash Lite',
-    input: google('gemini-2.5-flash-lite'),
+    name: 'DeepSeek V4 Flash',
+    input: gateway('deepseek/deepseek-v4-flash'),
   },
   {
-    name: 'GPT-4.1 Mini',
-    input: openai('gpt-4.1-mini'),
+    name: 'DeepSeek V4 Pro',
+    input: gateway('deepseek/deepseek-v4-pro'),
   },
 ])('Agent Tool Call Evaluation - Adversarial Inputs', {
   data: [
@@ -58,9 +58,53 @@ evalite.each([
     // - Hypothetical scenarios (e.g., "what would happen if...")
     // - Partial information requiring clarification
     // For cases where NO tool should be called, use: expected: { tool: null }
+    {
+      input: createUIMessageFixture(
+        'I need to organize my schedule',
+      ),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture(
+        "What's the difference between economy and business class on flights?",
+      ),
+      expected: { tool: 'searchWeb' },
+    },
+    {
+      input: createUIMessageFixture('Create a reminder'),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture('Book a flight'),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture('Thanks!'),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture('How do I create a backup?'),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture('Save this for later'),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture(
+        'What would happen if I organized my schedule?',
+      ),
+      expected: { tool: null },
+    },
+    {
+      input: createUIMessageFixture(
+        "Can you check the weather in Paris, book me a flight there for next Friday, and send an email to my team telling them I'll be out of the office next week?",
+      ),
+      expected: { tool: null },
+    },
   ],
   task: async (messages, model) => {
-    const result = runAgent(
+    const result = await runAgent(
       wrapAISDKModel(model),
       messages,
       stepCountIs(1),
