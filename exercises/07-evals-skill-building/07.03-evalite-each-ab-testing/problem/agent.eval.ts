@@ -1,16 +1,18 @@
-import { stepCountIs, type UIMessage } from 'ai';
+import { gateway, stepCountIs, type UIMessage } from 'ai';
 import { evalite } from 'evalite';
 import { runAgent } from './agent.ts';
 import { google } from '@ai-sdk/google';
 import { createUIMessageFixture } from '#shared/create-ui-message-fixture.ts';
 import { wrapAISDKModel } from 'evalite/ai-sdk';
 
-// TODO: Add more models to compare different LLM performance
-// Try: 'gemini-2.5-flash-lite', GPT-4o, Claude, etc.
 evalite.each([
   {
-    name: 'Gemini 2.5 Flash Lite',
-    input: google('gemini-2.5-flash-lite'),
+    name: 'DeepSeek V4 Flash',
+    input: gateway('deepseek/deepseek-v4-flash'),
+  },
+  {
+    name: 'DeepSeek V4 Pro',
+    input: gateway('deepseek/deepseek-v4-pro'),
   },
 ])('Agent Tool Call Evaluation', {
   data: [
@@ -46,7 +48,7 @@ evalite.each([
     },
   ],
   task: async (messages, model) => {
-    const result = runAgent(
+    const result = await runAgent(
       wrapAISDKModel(model),
       messages,
       stepCountIs(1),
