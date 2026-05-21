@@ -28,13 +28,29 @@ const tools = {
   //     (array of strings)
   //
   askForClarification: tool({
-    // TODO: Write a description for the tool
-    description: '',
+    description:
+      'This tool is used to ask the user clarifying questions when their request is missing critical information needed to complete the task. Provide pre-filled answer options for each question when possible.',
     inputSchema: z.object({
-      // TODO: Add the schema here
+      questions: z
+        .array(
+          z.object({
+            question: z
+              .string()
+              .describe('The question to ask the user'),
+            field: z
+              .string()
+              .describe('The field name this question is about'),
+            options: z
+              .array(z.string())
+              .describe(
+                'Pre-filled answer choices for the user to select from',
+              ),
+          }),
+        )
+        .describe('Array of clarifying questions to ask'),
     }),
-    execute: async () => {
-      return 'askForClarification tool called';
+    execute: async ({ questions }) => {
+      return `askForClarification tool called with questions: ${JSON.stringify(questions)}`;
     },
   }),
 
@@ -382,14 +398,14 @@ const tools = {
   }),
 };
 
-export const runAgent = (
+export const runAgent = async (
   model: LanguageModel,
   messages: UIMessage[],
   stopWhen: StopCondition<any>,
 ) => {
   const result = streamText({
     model,
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
     tools,
     stopWhen,
     // TODO: Update the system prompt to instruct the agent to use the
