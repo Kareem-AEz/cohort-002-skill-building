@@ -9,7 +9,13 @@ import type {
 } from '../api/chat.ts';
 
 const App = () => {
-  const { messages, sendMessage } = useChat<MyMessage>({});
+  const { messages, sendMessage, setMessages } =
+    useChat<MyMessage>({
+      onError: ({ message, name }) => {
+        console.error(message, name);
+        setMessages((prev) => prev.slice(0, -1));
+      },
+    });
 
   const [input, setInput] = useState(
     `Send an email to team@aihero.dev saying what a fantastic AI workshop I'm currently attending. Thank them for the workshop.`,

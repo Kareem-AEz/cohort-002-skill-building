@@ -3,15 +3,18 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  gateway,
   hasToolCall,
   stepCountIs,
   streamText,
+  wrapLanguageModel,
   type ModelMessage,
   type UIMessage,
 } from 'ai';
 import z from 'zod';
 import { sendEmail } from './email-service.ts';
 import { findDecisionsToProcess } from './hitl-processor.ts';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
 
 export type ToolRequiringApproval = {
   id: string;
@@ -44,10 +47,10 @@ export type MyMessage = UIMessage<
   }
 >;
 
-const annotateMessageHistory = (
+const annotateMessageHistory = async (
   messages: MyMessage[],
-): ModelMessage[] => {
-  const modelMessages = convertToModelMessages<MyMessage>(
+): Promise<ModelMessage[]> => {
+  const modelMessages = await convertToModelMessages<MyMessage>(
     messages,
     {
       convertDataPart(part) {
@@ -83,8 +86,17 @@ export const POST = async (req: Request): Promise<Response> => {
 
   const mostRecentUserMessage = messages[messages.length - 1];
 
-  // TODO: return a Response of status 400 if there
-  // is no most recent user message.
+  if (!mostRecentUserMessage) {
+    return new Response('Messages array cannot be empty', {
+      status: 400,
+    });
+  }
+
+  if (mostRecentUserMessage.role !== 'user') {
+    return new Response('Last message must be a user message', {
+      status: 400,
+    });
+  }
 
   // NOTE: assistant messages are allowed to be undefined,
   // since at the very start of the conversation we'll only
@@ -109,12 +121,17 @@ export const POST = async (req: Request): Promise<Response> => {
   console.dir(hitlResult, { depth: null });
 
   const annotatedMessageHistory =
-    annotateMessageHistory(messages);
+    await annotateMessageHistory(messages);
 
   const stream = createUIMessageStream<MyMessage>({
     execute: async ({ writer }) => {
+      const model = wrapLanguageModel({
+        model: gateway('deepseek/deepseek-v4-flash'),
+        middleware: [devToolsMiddleware()],
+      });
+
       const streamTextResponse = streamText({
-        model: google('gemini-2.5-flash'),
+        model,
         system: `
           You are a helpful assistant that can send emails.
           You will be given a diary of the conversation so far.
