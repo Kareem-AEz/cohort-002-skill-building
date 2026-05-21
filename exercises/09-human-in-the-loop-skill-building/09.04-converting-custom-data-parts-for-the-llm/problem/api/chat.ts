@@ -10,6 +10,7 @@ import {
   type UIMessage,
 } from 'ai';
 import z from 'zod';
+import { sendEmail } from './email-service.ts';
 
 export type ToolRequiringApproval = {
   id: string;
@@ -42,14 +43,38 @@ export type MyMessage = UIMessage<
   }
 >;
 
-const annotateMessageHistory = (
+const annotateMessageHistory = async (
   messages: MyMessage[],
-): ModelMessage[] => {
+): Promise<ModelMessage[]> => {
   // TODO: Use convertDataPart in the second parameter of convertToModelMessages
   // to allow the model to read the custom data parts.
   // Without this, the model will only see the text parts/tool calls.
-  const modelMessages =
-    convertToModelMessages<MyMessage>(messages);
+  const modelMessages = await convertToModelMessages<MyMessage>(
+    messages,
+    {
+      convertDataPart(part) {
+        if (part.type === 'data-approval-request') {
+          return {
+            type: 'text',
+            text: `The assistant requested to send an email: To: ${part.data.tool.to}, Subject: ${part.data.tool.subject}, Content: ${part.data.tool.content}`,
+          };
+        }
+        if (part.type === 'data-approval-decision') {
+          if (part.data.decision.type === 'approve') {
+            return {
+              type: 'text',
+              text: 'The user approved the tool.',
+            };
+          }
+          return {
+            type: 'text',
+            text: `The user rejected the tool: ${part.data.decision.reason}`,
+          };
+        }
+        return part;
+      },
+    },
+  );
 
   return modelMessages;
 };
@@ -58,15 +83,15 @@ export const POST = async (req: Request): Promise<Response> => {
   const body: { messages: MyMessage[] } = await req.json();
   const { messages } = body;
 
-  console.dir(messages[messages.length - 1], { depth: null });
+  // console.dir(messages[messages.length - 1], { depth: null });
 
   const annotatedMessageHistory =
-    annotateMessageHistory(messages);
+    await annotateMessageHistory(messages);
 
   const stream = createUIMessageStream<MyMessage>({
     execute: async ({ writer }) => {
       const streamTextResponse = streamText({
-        model: google('gemini-2.5-flash'),
+        model: 'deepseek/deepseek-v4-flash',
         system: `
           You are a helpful assistant that can send emails.
           You will be given a diary of the conversation so far.
@@ -81,7 +106,7 @@ export const POST = async (req: Request): Promise<Response> => {
               subject: z.string(),
               content: z.string(),
             }),
-            execute: ({ to, subject, content }) => {
+            execute: async ({ to, subject, content }) => {
               writer.write({
                 type: 'data-approval-request',
                 data: {

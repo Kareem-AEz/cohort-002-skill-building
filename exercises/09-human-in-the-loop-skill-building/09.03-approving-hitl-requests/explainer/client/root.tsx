@@ -14,7 +14,23 @@ const App = () => {
   const [input, setInput] = useState(
     `Send an email to team@aihero.dev saying what a fantastic AI workshop I'm currently attending. Thank them for the workshop.`,
   );
-
+  /**
+   * This is a useMemo hook that collects all `toolId` values from `data-approval-decision` message parts in the message history:
+   * - It first flattens all message parts into a single array
+   * - It then filters for parts with the `data-approval-decision` type
+   * - It then maps the parts to their `toolId` values
+   * - It then returns a new Set of the tool IDs
+   * - This Set is used to track which tool IDs have had decisions made
+   * - This is used to conditionally render the approve/reject buttons in the Message component
+   * @returns A Set of tool IDs that have had decisions made
+   * @example
+   * const toolIdsWithDecisionsMade = useMemo(() => {
+   *   return new Set(['123', '456', '789']);
+   * }, [messages]);
+   *
+   * console.log(toolIdsWithDecisionsMade);
+   * // Set { '123', '456', '789' }
+   */
   const toolIdsWithDecisionsMade = useMemo(() => {
     const allMessageParts = messages.flatMap(
       (message) => message.parts,

@@ -77,6 +77,11 @@ export const Message = ({
                   </h2>
                   <p className="text-xs text-muted-foreground">
                     {part.data.decision.type}
+                    {part.data.decision.type === 'reject' && (
+                      <span className="text-xs text-muted-foreground">
+                        (Reason: {part.data.decision.reason})
+                      </span>
+                    )}
                   </p>
                 </div>
               );
