@@ -56,10 +56,10 @@ export type MyMessage = UIMessage<
   }
 >;
 
-const annotateMessageHistory = (
+const annotateMessageHistory = async (
   messages: MyMessage[],
-): ModelMessage[] => {
-  const modelMessages = convertToModelMessages<MyMessage>(
+): Promise<ModelMessage[]> => {
+  const modelMessages = await convertToModelMessages<MyMessage>(
     messages,
     {
       convertDataPart(part) {
@@ -82,8 +82,12 @@ const annotateMessageHistory = (
           };
         }
 
-        // TODO: add a case for data-approval-result for after the tool
-        // has been executed.
+        if (part.type === 'data-approval-result') {
+          return {
+            type: 'text',
+            text: `The tool was performed: ${part.data.output.message}`,
+          };
+        }
         return part;
       },
     },
@@ -139,9 +143,28 @@ export const POST = async (req: Request): Promise<Response> => {
           // TODO: the user has approved the tool, so
           // we should send the email!
           //
+          await sendEmail({
+            to: tool.to,
+            subject: tool.subject,
+            content: tool.content,
+          });
           // TODO: we should also add a data-approval-result
           // part to the messages array, and write it to
           // the frontend.
+          const messagePart = {
+            type: 'data-approval-result' as const,
+            data: {
+              toolId: tool.id,
+              output: {
+                type: tool.type,
+                message: 'Email sent!',
+              },
+            },
+          };
+          writer.write(messagePart);
+          messagesAfterHitl[
+            messagesAfterHitl.length - 1
+          ]?.parts.push(messagePart);
         }
       }
 
@@ -149,7 +172,7 @@ export const POST = async (req: Request): Promise<Response> => {
       // processed the decisions, since we're changing the messages
       // array. If we don't do this, the LLM won't see the outputs
       // of the tools that we've performed.
-      const annotatedMessages = annotateMessageHistory(
+      const annotatedMessages = await annotateMessageHistory(
         messagesAfterHitl,
       );
 
